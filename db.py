@@ -49,7 +49,7 @@ def fetch_data():
     Fetch all records from a generic 'data' table.
     Returns: list of dicts
     """
-    query = "SELECT * FROM users"
+    query = "SELECT * FROM loads"
 
     try:
         conn = get_connection()
@@ -62,6 +62,15 @@ def fetch_data():
 
     except Error as e:
         raise RuntimeError(f"Database error in get_all_data: {e}")
+    
+def get_item_by_id(item_id: int):
+    conn = get_connection()
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM loads WHERE load_id = ?", (item_id,))
+    row = cur.fetchone()
+    conn.close()
+    return dict(row) if row else None
 
 
 def create_user(username, password_hash):

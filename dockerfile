@@ -23,11 +23,13 @@ RUN pip install --no-cache-dir --upgrade pip \
 # Copy the rest of the application
 COPY . .
 
-# Expose Streamlit default port
+# Expose Streamlit
 EXPOSE 8501
+# Expose Fastapi
+EXPOSE 8000
 
-# Healthcheck (optional but recommended)
+# Healthcheck
 HEALTHCHECK CMD curl --fail http://localhost:8501/_stcore/health || exit 1
 
 # Run Streamlit
-CMD ["streamlit", "run", "app.py", "--server.port=8501", "--server.address=0.0.0.0"]
+CMD ["entrypoint.sh"]

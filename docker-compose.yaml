@@ -9,6 +9,6 @@ services:
     volumes:
       - .:/app
     environment:
-      - DB_PATH=/app/database.db
+      - DB_PATH=Take-home.db
       - APP_SECRET=supersecretkey
     restart: unless-stopped

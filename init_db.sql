@@ -11,15 +11,6 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 -- =========================
--- SAMPLE DATA TABLE
--- =========================
-CREATE TABLE IF NOT EXISTS sample_data (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    value REAL
-);
-
--- =========================
 -- INSERT DEFAULT USER
 -- Password: "admin123"
 -- Hashed using bcrypt
@@ -32,11 +23,26 @@ VALUES (
 ON CONFLICT(username) DO NOTHING;
 
 -- =========================
--- INSERT SAMPLE DATA
+-- LOADS TABLE
 -- =========================
-INSERT INTO sample_data (name, value) VALUES
-    ('Temperature', 23.5),
-    ('Pressure', 1.02),
-    ('Humidity', 45.0),
-    ('Speed', 88.8)
-ON CONFLICT DO NOTHING;
+CREATE TABLE IF NOT EXISTS loads (
+    load_id TEXT PRIMARY KEY,
+
+    origin TEXT NOT NULL,
+    destination TEXT NOT NULL,
+
+    pickup_datetime TEXT,
+    delivery_datetime TEXT,
+
+    equipment_type TEXT,
+    loadboard_rate REAL,
+
+    notes TEXT,
+
+    weight REAL,
+    commodity_type TEXT,
+
+    num_of_pieces INTEGER,
+    miles REAL,
+    dimensions TEXT
+);
