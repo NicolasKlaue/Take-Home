@@ -31,5 +31,6 @@ EXPOSE 8000
 # Healthcheck
 HEALTHCHECK CMD curl --fail http://localhost:8501/_stcore/health || exit 1
 
-# Run Streamlit
-CMD ["entrypoint.sh"]
+
+
+CMD ["sh", "-c", "streamlit run app.py --server.port=8501 --server.address=0.0.0.0 & uvicorn main:app --host 0.0.0.0 --port 8000"]
