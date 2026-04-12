@@ -205,16 +205,18 @@ def calculate_period_delta(df, date_col, value_col=None, agg="count"):
     max_date = temp['date_only'].max()
     min_date = temp['date_only'].min()
     
-    total_days = (max_date - min_date).days
+    total_days = (max_date - min_date).days +1 
     
-    window_days = min(7, total_days)
-    current_start = max_date - pd.Timedelta(days=window_days)
-    prev_start = current_start - pd.Timedelta(days=window_days)
-    
-    # Use date_only for bucketing
-    current = temp[temp['date_only'] > current_start]
-    previous = temp[(temp['date_only'] > prev_start) & 
-                   (temp['date_only'] <= current_start)]
+    window_days = total_days // 2
+    if window_days < 1:
+        window_days = 1
+
+    prev_start = min_date
+    current_start = prev_start + pd.Timedelta(days=window_days)
+
+    current = temp[temp['date_only'] >= current_start]
+    previous = temp[(temp['date_only'] >= prev_start) & 
+                    (temp['date_only'] < current_start)]
 
     if agg == "count":
         cur_val = len(current)
