@@ -4,12 +4,13 @@ from faker import Faker
 from datetime import timedelta
 
 DB_PATH = "Take-home.db"
-NUM_RECORDS = 100
+NUM_RECORDS = 500
 
 fake = Faker()
 
 EQUIPMENT_TYPES = ["Dry Van", "Reefer", "Flatbed", "Step Deck"]
 COMMODITIES = ["Electronics", "Food", "Furniture", "Steel", "Clothing", "Machinery"]
+CITIES = ["Cooperport", "Kaylaport", "Donnamouth", "Lake Donaldfort", "West Nicholas", "Davidmouth", "Port Jessica", "West Paul", "Candaceport", "Port Lisaview"]
 
 def random_datetime_pair():
     pickup = fake.date_time_between(start_date="-10d", end_date="now")
@@ -21,8 +22,8 @@ def generate_load(load_id):
 
     return (
         load_id,
-        fake.city(),
-        fake.city(),
+        random.choice(CITIES),
+        random.choice(CITIES),
         pickup.strftime("%Y-%m-%d %H:%M:%S"),
         delivery.strftime("%Y-%m-%d %H:%M:%S"),
         random.choice(EQUIPMENT_TYPES),
