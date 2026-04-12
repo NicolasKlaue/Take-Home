@@ -1,20 +1,38 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException,Security, HTTPException, Depends
 from typing import List, Dict, Any
-
+from fastapi.security.api_key import APIKeyHeader
 import db
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
+
+SECRET_KEY = os.getenv("SECRET_KEY")
+SECRET_KEY_NAME = "X-API-Key"
+
+api_key_header = APIKeyHeader(name=SECRET_KEY_NAME, auto_error=False)
+
+def get_api_key(api_key: str = Security(api_key_header)):
+    if api_key is None:
+        raise HTTPException(status_code=401, detail="API key missing")
+
+    if api_key != SECRET_KEY:
+        raise HTTPException(status_code=403, detail="Invalid API key")
+
+    return api_key
 
 app = FastAPI(
     title="Take-Home API",
-    version="0.1.0"
+    version="0.1.0",
+    dependencies=[Depends(get_api_key)]
 )
-
 
 # -----------------------------
 # Health Check
 # -----------------------------
 @app.get("/")
 def root():
-    return {"message": "API is running 🚀"}
+    return {"message": "API is running"}
 
 
 # -----------------------------

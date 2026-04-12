@@ -71,8 +71,6 @@ def login_page():
                 st.success("Login successful!")
                 st.session_state.username = username
                 st.rerun()
-            else:
-                st.error("Invalid credentials.")
 
 
 def dashboard_page():
