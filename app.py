@@ -86,17 +86,6 @@ def login_page():
 
 
 
-
-# ---------------------------
-# Page Config
-# ---------------------------
-st.set_page_config(
-    page_title="Logistics Dashboard",
-    page_icon="📦",
-    layout="wide",
-    initial_sidebar_state="collapsed",
-)
-
 # ---------------------------
 # Theme / Styling
 # ---------------------------
