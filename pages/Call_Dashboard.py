@@ -16,7 +16,7 @@ HAPPYROBOT_WORKFLOW_ID = os.getenv("HAPPYROBOT_WORKFLOW_ID")
 
 
 st.set_page_config(
-    page_title="AI Call Analysis",
+    page_title="Call Dashboard",
     page_icon="🤖",
     layout="wide",
 )
@@ -61,100 +61,146 @@ def safe_json_loads(value, default):
         return json.loads(value)
     except Exception:
         return default
+FIELD_MAP = {
+    "classification": "019d87bc-8c96-7468-ad2c-81bbfd08bd17.response.classification",
+    "reasoning": "019d87ca-c77f-78f4-9327-a66ea5dec790.response.reasoning",
+    "negotiation_flow": "019d87d2-f9b2-745c-b862-fd9fc22fe4bc.response.negotiation_flow",
+    "tool_usage": "019d87d2-f9b2-745c-b862-fd9fc22fe4bc.response.tool_usage",
+    "key_insights": "019d87d2-f9b2-745c-b862-fd9fc22fe4bc.response.key_insights",
+    "transcript": "019d86ca-18ec-7b04-8a09-a7998bd60827.transcript",
+    "agreement_status": "019d87d2-f9b2-745c-b862-fd9fc22fe4bc.response.final_agreement.status",
+    "agreement_summary": "019d87d2-f9b2-745c-b862-fd9fc22fe4bc.response.final_agreement.summary",
+    "origin": "019d87d2-f9b2-745c-b862-fd9fc22fe4bc.response.entities.load.origin",
+    "destination": "019d87d2-f9b2-745c-b862-fd9fc22fe4bc.response.entities.load.destination",
+    "equipment": "019d87d2-f9b2-745c-b862-fd9fc22fe4bc.response.entities.load.equipment",
+    "weight": "019d87d2-f9b2-745c-b862-fd9fc22fe4bc.response.entities.load.weight",
+    "mc_number": "019d87d2-f9b2-745c-b862-fd9fc22fe4bc.response.entities.carrier.mc_number",
+    "carrier_status": "019d87d2-f9b2-745c-b862-fd9fc22fe4bc.response.entities.carrier.status",
+    "currency": "019d87d2-f9b2-745c-b862-fd9fc22fe4bc.response.entities.financials.currency",
+    "final_rate": "019d87d2-f9b2-745c-b862-fd9fc22fe4bc.response.entities.financials.final_rate_accepted",
+}
+
+
+def get_mapped_fields(nested: dict) -> dict:
+    return {alias: nested.get(raw_key) for alias, raw_key in FIELD_MAP.items()}
+
+
+def to_numeric_series(values) -> list[float]:
+    if not values:
+        return []
+    s = pd.to_numeric(pd.Series(values), errors="coerce").dropna()
+    return s.tolist()
+
+
+def extract_negotiation_metrics(negotiation_flow: list[dict]) -> dict:
+    numeric_values = to_numeric_series(
+        [step.get("value") for step in negotiation_flow if step.get("value") is not None]
+    )
+
+    carrier_offers = to_numeric_series(
+        [
+            step.get("value")
+            for step in negotiation_flow
+            if step.get("actor") == "user" and step.get("value") is not None
+        ]
+    )
+
+    broker_offers = to_numeric_series(
+        [
+            step.get("value")
+            for step in negotiation_flow
+            if step.get("actor") == "assistant" and step.get("value") is not None
+        ]
+    )
+
+    initial_offer = numeric_values[0] if numeric_values else np.nan
+
+    return {
+        "initial_offer": initial_offer,
+        "carrier_max_offer": max(carrier_offers) if carrier_offers else np.nan,
+        "broker_max_offer": max(broker_offers) if broker_offers else np.nan,
+        "negotiation_rounds": len(carrier_offers),
+    }
+
+
+def build_route(origin, destination) -> str:
+    return f"{origin or 'Unknown'} → {destination or 'Unknown'}"
+
+
+def calculate_margin_pct(final_rate, initial_offer):
+    if pd.isna(final_rate) or pd.isna(initial_offer) or initial_offer == 0:
+        return np.nan
+    return ((final_rate - initial_offer) / initial_offer) * 100
+
+
+def calculate_duration_minutes(timestamp, completed_at):
+    if pd.isna(timestamp) or pd.isna(completed_at):
+        return np.nan
+    return (completed_at - timestamp).total_seconds() / 60
+
+
+def parse_single_run(run: dict) -> dict:
+    nested = run.get("data", {})
+    fields = get_mapped_fields(nested)
+
+    negotiation_flow = safe_json_loads(fields["negotiation_flow"], [])
+    tool_usage = safe_json_loads(fields["tool_usage"], [])
+    key_insights = safe_json_loads(fields["key_insights"], [])
+    transcript = safe_json_loads(fields["transcript"], [])
+
+    timestamp = pd.to_datetime(run.get("timestamp"), errors="coerce")
+    completed_at = pd.to_datetime(run.get("completed_at"), errors="coerce")
+    final_rate = pd.to_numeric(fields["final_rate"], errors="coerce")
+
+    negotiation = extract_negotiation_metrics(negotiation_flow)
+    route = build_route(fields["origin"], fields["destination"])
+
+    return {
+        "run_id": run.get("id"),
+        "status": run.get("status"),
+        "timestamp": timestamp,
+        "completed_at": completed_at,
+        "input_tokens": pd.to_numeric(run.get("input_tokens"), errors="coerce"),
+        "output_tokens": pd.to_numeric(run.get("output_tokens"), errors="coerce"),
+        "classification": fields["classification"],
+        "reasoning": fields["reasoning"],
+        "agreement_status": fields["agreement_status"],
+        "agreement_summary": fields["agreement_summary"],
+        "origin": fields["origin"],
+        "destination": fields["destination"],
+        "equipment": fields["equipment"],
+        "weight": fields["weight"],
+        "mc_number": fields["mc_number"],
+        "carrier_status": fields["carrier_status"],
+        "currency": fields["currency"],
+        "final_rate": final_rate,
+        "initial_offer": negotiation["initial_offer"],
+        "negotiation_rounds": negotiation["negotiation_rounds"],
+        "tool_count": len(tool_usage),
+        "transcript_turns": len(transcript),
+        "key_insights": " | ".join(key_insights) if key_insights else None,
+        "route": route,
+        "carrier_max_offer": negotiation["carrier_max_offer"],
+        "broker_max_offer": negotiation["broker_max_offer"],
+        "margin_vs_initial_pct": calculate_margin_pct(final_rate, negotiation["initial_offer"]),
+        "duration_minutes": calculate_duration_minutes(timestamp, completed_at),
+        "negotiation_flow_raw": negotiation_flow,
+        "tool_usage_raw": tool_usage,
+        "transcript_raw": transcript,
+    }
+
 
 def parse_runs_to_dataframe(api_response: dict) -> pd.DataFrame:
     runs = api_response.get("data", [])
-    rows = []
-
-    for run in runs:
-        nested = run.get("data", {})
-
-        negotiation_flow = safe_json_loads(
-            nested.get("019d87d2-f9b2-745c-b862-fd9fc22fe4bc.response.negotiation_flow"),
-            []
-        )
-        tool_usage = safe_json_loads(
-            nested.get("019d87d2-f9b2-745c-b862-fd9fc22fe4bc.response.tool_usage"),
-            []
-        )
-        key_insights = safe_json_loads(
-            nested.get("019d87d2-f9b2-745c-b862-fd9fc22fe4bc.response.key_insights"),
-            []
-        )
-        transcript = safe_json_loads(
-            nested.get("019d86ca-18ec-7b04-8a09-a7998bd60827.transcript"),
-            []
-        )
-
-        initial_offer = np.nan
-        final_rate = pd.to_numeric(
-            nested.get("019d87d2-f9b2-745c-b862-fd9fc22fe4bc.response.entities.financials.final_rate_accepted"),
-            errors="coerce"
-        )
-
-        numeric_steps = [x.get("value") for x in negotiation_flow if x.get("value") is not None]
-        numeric_steps = pd.to_numeric(pd.Series(numeric_steps), errors="coerce").dropna().tolist()
-
-        if len(numeric_steps) > 0:
-            initial_offer = numeric_steps[0]
-
-        carrier_offers = [
-            pd.to_numeric(x.get("value"), errors="coerce")
-            for x in negotiation_flow
-            if x.get("actor") == "user" and x.get("value") is not None
-        ]
-        carrier_offers = [x for x in carrier_offers if pd.notna(x)]
-
-        broker_offers = [
-            pd.to_numeric(x.get("value"), errors="coerce")
-            for x in negotiation_flow
-            if x.get("actor") == "assistant" and x.get("value") is not None
-        ]
-        broker_offers = [x for x in broker_offers if pd.notna(x)]
-
-        row = {
-            "run_id": run.get("id"),
-            "status": run.get("status"),
-            "timestamp": pd.to_datetime(run.get("timestamp"), errors="coerce"),
-            "completed_at": pd.to_datetime(run.get("completed_at"), errors="coerce"),
-            "input_tokens": pd.to_numeric(run.get("input_tokens"), errors="coerce"),
-            "output_tokens": pd.to_numeric(run.get("output_tokens"), errors="coerce"),
-            "classification": nested.get("019d87bc-8c96-7468-ad2c-81bbfd08bd17.response.classification"),
-            "reasoning": nested.get("019d87ca-c77f-78f4-9327-a66ea5dec790.response.reasoning"),
-            "agreement_status": nested.get("019d87d2-f9b2-745c-b862-fd9fc22fe4bc.response.final_agreement.status"),
-            "agreement_summary": nested.get("019d87d2-f9b2-745c-b862-fd9fc22fe4bc.response.final_agreement.summary"),
-            "origin": nested.get("019d87d2-f9b2-745c-b862-fd9fc22fe4bc.response.entities.load.origin"),
-            "destination": nested.get("019d87d2-f9b2-745c-b862-fd9fc22fe4bc.response.entities.load.destination"),
-            "equipment": nested.get("019d87d2-f9b2-745c-b862-fd9fc22fe4bc.response.entities.load.equipment"),
-            "weight": nested.get("019d87d2-f9b2-745c-b862-fd9fc22fe4bc.response.entities.load.weight"),
-            "mc_number": nested.get("019d87d2-f9b2-745c-b862-fd9fc22fe4bc.response.entities.carrier.mc_number"),
-            "carrier_status": nested.get("019d87d2-f9b2-745c-b862-fd9fc22fe4bc.response.entities.carrier.status"),
-            "currency": nested.get("019d87d2-f9b2-745c-b862-fd9fc22fe4bc.response.entities.financials.currency"),
-            "final_rate": final_rate,
-            "initial_offer": initial_offer,
-            "negotiation_rounds": len([
-                x for x in negotiation_flow
-                if x.get("actor") == "user" and x.get("value") is not None
-            ]),
-            "tool_count": len(tool_usage),
-            "transcript_turns": len(transcript),
-            "key_insights": " | ".join(key_insights) if key_insights else None,
-            "route": f"{nested.get('019d87d2-f9b2-745c-b862-fd9fc22fe4bc.response.entities.load.origin', 'Unknown')} → {nested.get('019d87d2-f9b2-745c-b862-fd9fc22fe4bc.response.entities.load.destination', 'Unknown')}",
-            "carrier_max_offer": max(carrier_offers) if carrier_offers else np.nan,
-            "broker_max_offer": max(broker_offers) if broker_offers else np.nan,
-            "margin_vs_initial_pct": ((final_rate - initial_offer) / initial_offer * 100) if pd.notna(final_rate) and pd.notna(initial_offer) and initial_offer != 0 else np.nan,
-            "duration_minutes": ((pd.to_datetime(run.get("completed_at"), errors="coerce") - pd.to_datetime(run.get("timestamp"), errors="coerce")).total_seconds() / 60) if run.get("completed_at") and run.get("timestamp") else np.nan,
-            "negotiation_flow_raw": negotiation_flow,
-            "tool_usage_raw": tool_usage,
-            "transcript_raw": transcript,
-        }
-        rows.append(row)
+    rows = [parse_single_run(run) for run in runs]
 
     df = pd.DataFrame(rows)
 
-    if not df.empty and "timestamp" in df.columns:
-        df["date"] = df["timestamp"].dt.date
-        df["day"] = df["timestamp"].dt.day_name()
+    if df.empty:
+        return df
+
+    df["date"] = df["timestamp"].dt.date
+    df["day"] = df["timestamp"].dt.day_name()
 
     return df
 
