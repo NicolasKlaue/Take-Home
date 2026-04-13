@@ -237,7 +237,12 @@ def build_tool_usage_df(df: pd.DataFrame) -> pd.DataFrame:
 # ---------------------------
 st.title("🤖 AI Call Analysis")
 
-page_size = st.selectbox("Page Size", [25, 50, 100], index=2)
+Number_of_Calls = st.selectbox("Call amount", [25, 50, 100, "Custom"], index=2)
+
+if Number_of_Calls == "Custom":
+    page_size = st.number_input("Enter custom Call Amount", min_value=1, value=100)
+else:
+    page_size = Number_of_Calls
 
 if st.button("Fetch AI Calls", use_container_width=True):
     try:
