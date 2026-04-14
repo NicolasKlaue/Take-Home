@@ -422,16 +422,33 @@ with col4:
 # ---------------------------
 st.subheader("Negotiation Flow")
 
+run_ids = filtered_df["run_id"].tolist()
+run_options = ["All runs"] + run_ids
+
+run_label_map = {
+    row["run_id"]: f"Run {i+1} · {row['route']}"
+    for i, (_, row) in enumerate(filtered_df.reset_index(drop=True).iterrows())
+}
+
 selected_run_id = st.selectbox(
     "Select Run",
-    options=filtered_df["run_id"].tolist(),
-    format_func=lambda x: f"{x} | {filtered_df.loc[filtered_df['run_id'] == x, 'route'].iloc[0]}"
+    options=run_options,
+    format_func=lambda x: "All runs" if x == "All runs" else run_label_map.get(x, str(x))
 )
 
-selected_steps = steps_df[steps_df["run_id"] == selected_run_id].copy()
+if selected_run_id == "All runs":
+    selected_steps = steps_df.copy()
+else:
+    selected_steps = steps_df[steps_df["run_id"] == selected_run_id].copy()
 
 if not selected_steps.empty:
-    selected_steps["label"] = selected_steps["actor"] + " - Step " + selected_steps["step_index"].astype(str)
+    selected_steps = selected_steps.copy()
+    selected_steps["run_label"] = selected_steps["run_id"].map(run_label_map)
+    selected_steps["run_actor"] = (
+        selected_steps["run_label"].fillna(selected_steps["run_id"].astype(str))
+        + " | "
+        + selected_steps["actor"].astype(str)
+    )
 
     chart_df = selected_steps.dropna(subset=["value"]).copy()
 
@@ -441,23 +458,46 @@ if not selected_steps.empty:
             x="step_index",
             y="value",
             color="actor",
+            line_group="run_actor",
+            line_dash="run_label" if selected_run_id == "All runs" else None,
             markers=True,
-            hover_data=["step"],
+            hover_data={
+                "run_label": True,
+                "actor": True,
+                "step": True,
+                "run_id": False,
+            },
             template="plotly_white",
+            color_discrete_map={
+                "user": "#1f77b4",
+                "assistant": "#d62728",
+                "User": "#1f77b4",
+                "Assistant": "#d62728",
+            },
         )
-        fig.update_layout(height=380, margin=dict(l=10, r=10, t=10, b=10), xaxis_title="Negotiation Step", yaxis_title="Rate ($)")
+
+        fig.update_layout(
+            height=380,
+            margin=dict(l=10, r=10, t=10, b=10),
+            xaxis_title="Negotiation Step",
+            yaxis_title="Rate ($)",
+        )
+
         st.plotly_chart(fig, use_container_width=True)
 
-    st.dataframe(
-        selected_steps[["step_index", "actor", "step", "value"]],
-        use_container_width=True,
-        hide_index=True,
+    display_cols = (
+        ["step_index", "actor", "step", "value"]
     )
+    if selected_run_id != "All runs":
+        st.dataframe(
+            selected_steps[display_cols],
+            use_container_width=True,
+            hide_index=True,
+        )
 else:
-    st.info("No negotiation steps available for this run.")
+    st.info("No negotiation steps available for this selection.")
 
 st.divider()
-
 # ---------------------------
 # Details
 # ---------------------------
