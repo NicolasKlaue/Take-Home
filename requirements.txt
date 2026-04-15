@@ -6,3 +6,4 @@ pandas==3.0.2
 plotly==6.7.0
 uvicorn==0.44.0
 python-dotenv==1.2.2
+pydantic==2.12.5

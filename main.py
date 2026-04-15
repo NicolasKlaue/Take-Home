@@ -2,6 +2,7 @@ from fastapi import FastAPI, HTTPException,Security, HTTPException, Depends
 from typing import List, Dict, Any
 from fastapi.security.api_key import APIKeyHeader
 import db
+from pydantic import BaseModel
 from dotenv import load_dotenv
 import os
 
@@ -63,7 +64,35 @@ def get_item(item_id: str):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+# -----------------------------
+# Get MC Number check
+# -----------------------------
+from fastapi import FastAPI, HTTPException, Path
 
+app = FastAPI()
+
+
+class MCValidationResponse(BaseModel):
+    mc_number: int
+    is_valid: bool
+
+
+@app.get("/mc/{mc_number}", response_model=MCValidationResponse)
+def validate_mc_number(
+    mc_number: int = Path(..., description="MC number to validate", gt=0)
+):
+    """
+    Dummy validation:
+    - Even MC numbers are considered valid
+    - Odd MC numbers are considered invalid
+    """
+
+    is_valid = mc_number % 2 == 0
+
+    return MCValidationResponse(
+        mc_number=mc_number,
+        is_valid=is_valid
+    )
 
 # -----------------------------
 # Create Item (Optional)

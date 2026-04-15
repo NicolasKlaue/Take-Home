@@ -1,13 +1,6 @@
 import bcrypt
 from typing import Dict, Any, Optional
 
-# Assumes db.py exposes a function: get_user_by_username(username: str)
-# which returns a dict like:
-# {
-#     "id": int,
-#     "username": str,
-#     "password_hash": str
-# }
 from db import get_user_by_username
 
 
