@@ -235,7 +235,7 @@ def build_tool_usage_df(df: pd.DataFrame) -> pd.DataFrame:
 # ---------------------------
 # UI
 # ---------------------------
-st.title("🤖 AI Call Analysis")
+st.title("AI Call Analysis")
 
 Number_of_Calls = st.selectbox("Call amount", [25, 50, 100, "Custom"], index=2)
 
@@ -276,26 +276,66 @@ df = st.session_state.ai_runs_df.copy()
 steps_df = st.session_state.ai_steps_df.copy()
 tools_df = st.session_state.ai_tools_df.copy()
 
-# ---------------------------
-# Filters
-# ---------------------------
+filtered_df = df.copy()
+
 st.subheader("Filters")
 
+
 f1, f2, f3, f4 = st.columns(4)
+f5, f6, f7, f8, f9 = st.columns(5) 
+
 
 with f1:
-    status_filter = st.multiselect("Status", sorted(df["status"].dropna().unique().tolist()))
+    status_filter = st.multiselect("Status", sorted(df["status"].dropna().unique().tolist()), default=[])
 
 with f2:
-    classification_filter = st.multiselect("Classification", sorted(df["classification"].dropna().unique().tolist()))
+    classification_filter = st.multiselect("Classification", sorted(df["classification"].dropna().unique().tolist()), default=[])
 
 with f3:
-    route_filter = st.multiselect("Route", sorted(df["route"].dropna().unique().tolist()))
+    route_filter = st.multiselect("Route", sorted(df["route"].dropna().unique().tolist()), default=[])
 
 with f4:
-    equipment_filter = st.multiselect("Equipment", sorted(df["equipment"].dropna().unique().tolist()))
+    equipment_filter = st.multiselect("Equipment", sorted(df["equipment"].dropna().unique().tolist()), default=[])
 
-filtered_df = df.copy()
+with f5:
+    date_values = df["date"].dropna()
+
+    selected_dates = st.date_input(
+        "Date range",
+        value=[],
+        min_value=date_values.min() if not date_values.empty else None,
+        max_value=date_values.max() if not date_values.empty else None,
+        key="date_range_filter",
+    )
+
+with f6:
+    min_rate = st.number_input(
+        "Min final rate ($)",
+        value=float(0.0) if not filtered_df.empty else 0.0,
+        min_value=0.0,
+        step=100.0,
+    )
+
+with f7:
+    max_rate = st.number_input(
+        "Max final rate ($)",
+        value=float(filtered_df["final_rate"].max()) if not filtered_df.empty else 1000.0,
+        min_value=min_rate,
+        step=100.0,
+    )
+
+with f8:
+    carrier_filter = st.text_input("Carrier MC", value="")
+
+with f9:
+    agreement_status_filter = st.multiselect(
+        "Agreement Status",
+        sorted(df["agreement_status"].dropna().unique().tolist()),
+        default=[],
+    )
+
+
+
 
 if status_filter:
     filtered_df = filtered_df[filtered_df["status"].isin(status_filter)]
@@ -309,14 +349,49 @@ if route_filter:
 if equipment_filter:
     filtered_df = filtered_df[filtered_df["equipment"].isin(equipment_filter)]
 
+date_min = None
+date_max = None
+
+if selected_dates is None:
+    pass
+elif isinstance(selected_dates, tuple):
+    if len(selected_dates) == 1:
+        date_min = selected_dates[0]
+        date_max = selected_dates[0]
+    elif len(selected_dates) == 2:
+        date_min, date_max = selected_dates
+elif selected_dates:
+    date_min = selected_dates
+    date_max = selected_dates
+
+if date_min is not None and date_max is not None:
+    filtered_df = filtered_df[
+    (filtered_df["date"] >= date_min) &
+    (filtered_df["date"] <= date_max)
+]
+
+filtered_df = filtered_df[
+    (filtered_df["final_rate"].fillna(0) >= min_rate)
+    & (filtered_df["final_rate"].fillna(0) <= max_rate)
+]
+
+if carrier_filter:
+    filtered_df = filtered_df[
+        filtered_df["mc_number"].astype(str).str.contains(carrier_filter, na=False, case=False)
+    ]
+
+if agreement_status_filter:
+    filtered_df = filtered_df[filtered_df["agreement_status"].isin(agreement_status_filter)]
+
+
 if filtered_df.empty:
     st.warning("No runs match the selected filters.")
     st.stop()
 
+
 filtered_run_ids = set(filtered_df["run_id"].tolist())
 steps_df = steps_df[steps_df["run_id"].isin(filtered_run_ids)]
 tools_df = tools_df[tools_df["run_id"].isin(filtered_run_ids)]
-
 # ---------------------------
 # KPIs
 # ---------------------------
@@ -329,6 +404,7 @@ avg_input_tokens = filtered_df["input_tokens"].mean()
 avg_rounds = filtered_df["negotiation_rounds"].mean()
 
 k1, k2, k3, k4, k5, k6 = st.columns(6)
+k7, k8, k9, k10, k11, k12 = st.columns(6)
 
 k1.metric("Total Runs", fmt_number(total_runs))
 k2.metric("Completed", fmt_number(completed_runs))
@@ -336,6 +412,48 @@ k3.metric("Success Rate", "-" if pd.isna(success_rate) else f"{success_rate:.1f}
 k4.metric("Avg Final Rate", fmt_currency(avg_final_rate, 0))
 k5.metric("Avg Margin vs Initial", "-" if pd.isna(avg_margin) else f"{avg_margin:.1f}%")
 k6.metric("Avg Negotiation Rounds", fmt_number(avg_rounds, 1))
+
+
+
+avg_duration = filtered_df["duration_minutes"].mean()
+avg_tokens = (filtered_df["input_tokens"] + filtered_df["output_tokens"]).mean()
+runs_in_rate_band = filtered_df[
+    (filtered_df["final_rate"] >= min_rate) & (filtered_df["final_rate"] <= max_rate)
+]
+runs_in_rate_band_count = len(runs_in_rate_band)
+high_margin_runs = filtered_df[
+    (filtered_df["margin_vs_initial_pct"] > 10) & (filtered_df["status"] == "completed")
+].shape[0]
+success_rate_high_margin = (
+    (high_margin_runs / completed_runs * 100) if completed_runs else np.nan
+)
+avg_tool_count = filtered_df["tool_count"].mean()
+
+
+k7.metric(
+    "Avg Duration (min)",
+    "-" if pd.isna(avg_duration) else f"{avg_duration:.1f}",
+)
+k8.metric(
+    "Avg Total Tokens",
+    "-" if pd.isna(avg_tokens) else f"{avg_tokens:.0f}",
+)
+k9.metric(
+    "Runs in Rate Band",
+    fmt_number(runs_in_rate_band_count),
+)
+k10.metric(
+    "High‑Margin Successes",
+    fmt_number(high_margin_runs),
+)
+k11.metric(
+    "High‑Margin % of Successes",
+    "-" if pd.isna(success_rate_high_margin) else f"{success_rate_high_margin:.1f}%",
+)
+k12.metric(
+    "Avg Tool Usage Per Call",
+    fmt_number(avg_tool_count, 1),
+)
 
 st.divider()
 
